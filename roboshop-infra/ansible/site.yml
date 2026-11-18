@@ -1,0 +1,33 @@
+# Order follows the README: DB (RDS, already up via Terraform) -> app -> nginx.
+# serial: 1 = rolling deploy; the ALB keeps serving from the other node, and the
+# first app node creates the DB schema before the second one starts.
+
+- name: Application tier (Spring Boot)
+  hosts: app
+  become: true
+  serial: 1
+  gather_facts: false
+  pre_tasks:
+    - name: Wait for SSH via bastion
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+    - name: Gather facts
+      ansible.builtin.setup:
+  roles:
+    - common
+    - app
+
+- name: Web tier (Nginx)
+  hosts: web
+  become: true
+  serial: 1
+  gather_facts: false
+  pre_tasks:
+    - name: Wait for SSH via bastion
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+    - name: Gather facts
+      ansible.builtin.setup:
+  roles:
+    - common
+    - nginx

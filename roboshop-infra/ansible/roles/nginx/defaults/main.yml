@@ -1,0 +1,5 @@
+nginx_html_dir: /usr/share/nginx/html
+nginx_static_dirs: [css, js, images]
+nginx_src_dir: /var/tmp/roboshop-src
+# Amazon-provided VPC DNS resolver (always this address in every VPC)
+nginx_resolver: 169.254.169.253

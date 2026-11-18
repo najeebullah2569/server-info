@@ -1,0 +1,77 @@
+- name: Install nginx
+  ansible.builtin.dnf:
+    name: nginx
+    state: present
+
+- name: Allow nginx to make outbound connections to the app (SELinux)
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+
+- name: Download source archive (for static assets)
+  ansible.builtin.get_url:
+    url: "{{ roboshop_zip_url }}"
+    dest: /var/tmp/roboshop-monolith.zip
+    mode: "0644"
+    force: "{{ roboshop_redeploy | bool }}"
+  register: web_zip
+
+- name: Create extraction directory
+  ansible.builtin.file:
+    path: "{{ nginx_src_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Check whether source is already extracted
+  ansible.builtin.stat:
+    path: "{{ nginx_src_dir }}/src/main/resources/static"
+  register: web_static
+
+- name: Extract source
+  ansible.builtin.unarchive:
+    src: /var/tmp/roboshop-monolith.zip
+    dest: "{{ nginx_src_dir }}"
+    remote_src: true
+  when: web_zip.changed or not web_static.stat.exists
+
+- name: Publish static assets
+  ansible.builtin.copy:
+    src: "{{ nginx_src_dir }}/src/main/resources/static/{{ item }}/"
+    dest: "{{ nginx_html_dir }}/{{ item }}/"
+    remote_src: true
+    owner: nginx
+    group: nginx
+    mode: preserve
+  loop: "{{ nginx_static_dirs }}"
+
+- name: Install nginx.conf
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    mode: "0644"
+    validate: nginx -t -c %s
+  notify: Reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: Apply pending reloads now
+  ansible.builtin.meta: flush_handlers
+
+- name: Check nginx health endpoint (what the public ALB probes)
+  ansible.builtin.uri:
+    url: http://localhost/nginx-health
+    status_code: 200
+
+- name: Check end-to-end path nginx -> internal ALB -> app
+  ansible.builtin.uri:
+    url: http://localhost/
+    status_code: [200, 302]
+  register: web_e2e
+  until: web_e2e.status in [200, 302]
+  retries: 12
+  delay: 10

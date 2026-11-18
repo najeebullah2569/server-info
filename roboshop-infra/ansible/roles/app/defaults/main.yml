@@ -1,0 +1,5 @@
+app_user: appuser
+app_dir: /app
+app_war_path: "{{ app_dir }}/target/roboshop.war"
+app_heap_max: 1g
+app_env_file: /etc/roboshop/roboshop.env

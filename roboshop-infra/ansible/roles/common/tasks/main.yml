@@ -1,0 +1,15 @@
+- name: Install base packages
+  ansible.builtin.dnf:
+    name:
+      - unzip
+      - curl
+      - chrony
+      - python3-libselinux
+      - python3-libsemanage
+    state: present
+
+- name: Keep time in sync (TLS, logs, DB timestamps)
+  ansible.builtin.service:
+    name: chronyd
+    state: started
+    enabled: true

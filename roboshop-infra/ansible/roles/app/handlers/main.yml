@@ -1,0 +1,5 @@
+- name: Restart roboshop
+  ansible.builtin.systemd:
+    name: roboshop
+    state: restarted
+    daemon_reload: true

@@ -1,0 +1,19 @@
+# Managed by Ansible
+[Unit]
+Description=RoboShop Monolith Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+WorkingDirectory={{ app_dir }}
+EnvironmentFile={{ app_env_file }}
+ExecStart=/usr/bin/java -Xms256m -Xmx{{ app_heap_max }} -jar {{ app_war_path }}
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

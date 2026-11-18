@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and fill in.
+aws_region  = "us-east-1"
+environment = "prod"
+
+domain_name = "example.com"       # a public hosted zone you already own in Route53
+admin_cidr  = "203.0.113.10/32"   # your public IP: curl ifconfig.me
+
+ssh_public_key_path  = "~/.ssh/roboshop.pub"
+ssh_private_key_path = "~/.ssh/roboshop"
+
+web_count = 2
+app_count = 2
+
+# Lab / cost-saving overrides (keep defaults for production):
+# single_nat_gateway     = true
+# db_multi_az            = false
+# db_deletion_protection = false

@@ -1,0 +1,111 @@
+- name: Install Java 21 and Maven
+  ansible.builtin.dnf:
+    name:
+      - java-21-openjdk
+      - java-21-openjdk-devel
+      - maven
+    state: present
+
+- name: Create application system user
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0750"
+
+- name: Download source archive
+  ansible.builtin.get_url:
+    url: "{{ roboshop_zip_url }}"
+    dest: "{{ app_dir }}/roboshop-monolith.zip"
+    mode: "0640"
+    force: "{{ roboshop_redeploy | bool }}"
+  register: app_zip
+
+- name: Check whether source is already extracted
+  ansible.builtin.stat:
+    path: "{{ app_dir }}/pom.xml"
+  register: app_pom
+
+- name: Extract source
+  ansible.builtin.unarchive:
+    src: "{{ app_dir }}/roboshop-monolith.zip"
+    dest: "{{ app_dir }}"
+    remote_src: true
+  when: app_zip.changed or not app_pom.stat.exists
+  register: app_extract
+
+- name: Check whether WAR is already built
+  ansible.builtin.stat:
+    path: "{{ app_war_path }}"
+  register: app_war
+
+- name: Build WAR with Maven (takes a few minutes the first time)
+  ansible.builtin.command:
+    cmd: mvn -q -B clean package -DskipTests
+    chdir: "{{ app_dir }}"
+  when: app_extract.changed or not app_war.stat.exists
+  notify: Restart roboshop
+
+- name: Verify WAR exists at expected path
+  ansible.builtin.stat:
+    path: "{{ app_war_path }}"
+  register: app_war_after
+  failed_when: not app_war_after.stat.exists
+
+- name: Fix ownership and lock down permissions
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "o-rwx"
+    recurse: true
+
+- name: Create config directory
+  ansible.builtin.file:
+    path: "{{ app_env_file | dirname }}"
+    state: directory
+    mode: "0750"
+
+- name: Write environment file (DB credentials, root-only)
+  ansible.builtin.template:
+    src: roboshop.env.j2
+    dest: "{{ app_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart roboshop
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: roboshop.service.j2
+    dest: /etc/systemd/system/roboshop.service
+    mode: "0644"
+  notify: Restart roboshop
+
+- name: Enable and start roboshop
+  ansible.builtin.systemd:
+    name: roboshop
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Apply pending restarts now
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for app health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ app_port }}{{ app_health_path }}"
+    status_code: 200
+  register: app_health
+  until: app_health.status == 200
+  retries: 30
+  delay: 10
